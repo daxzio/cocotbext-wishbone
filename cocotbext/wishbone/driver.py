@@ -1,11 +1,17 @@
 
 import cocotb
-from cocotb.triggers import FallingEdge, RisingEdge, Event
+from cocotb.triggers import NullTrigger, RisingEdge, Event
 from cocotb_bus.drivers import BusDriver
-from cocotb.result import TestFailure
-from cocotb.binary import BinaryValue
-from cocotb.decorators import public
+from cocotb.types import LogicArray
 
+# Immediate assign helper working in both 1.x and 2.x cocotb without deprecation warnings
+try:
+    from cocotb.handle import Immediate
+    def set_immediate(sig, val):
+        sig.set(Immediate(val))
+except ImportError:
+    def set_immediate(sig, val):
+        sig.setimmediatevalue(val)
 
 def is_sequence(arg):
     return (not hasattr(arg, "strip") and
@@ -30,7 +36,6 @@ class WBAux():
         self.bte        = bte
 
 
-@public
 class WBOp():
     """
     Wishbone Operations Wrapper Class
@@ -56,7 +61,6 @@ class WBOp():
         self.bte    = bte
 
 
-@public
 class WBRes():
     """
     Wishbone Result Wrapper Class.
@@ -90,22 +94,22 @@ class Wishbone(BusDriver):
         BusDriver.__init__(self, entity, name, clock, case_insensitive=False, **kwargs)
         # Drive some sensible defaults (setimmediatevalue to avoid x asserts)
         self._width = width
-        self.bus.cyc.setimmediatevalue(0)
-        self.bus.stb.setimmediatevalue(0)
-        self.bus.we.setimmediatevalue(0)
-        self.bus.adr.setimmediatevalue(0)
-        self.bus.datwr.setimmediatevalue(0)
+        set_immediate(self.bus.cyc, 0)
+        set_immediate(self.bus.stb, 0)
+        set_immediate(self.bus.we, 0)
+        set_immediate(self.bus.adr, 0)
+        set_immediate(self.bus.datwr, 0)
 
         if hasattr(self.bus, "sel"):
             v = self.bus.sel.value
-            v.binstr = "1" * len(self.bus.sel)
+            v = "1" * len(self.bus.sel)
             self.bus.sel.value = v
 
         if hasattr(self.bus, "cti"):
-            self.bus.cti.setimmediatevalue(0)
+            set_immediate(self.bus.cti, 0)
 
         if hasattr(self.bus, "bte"):
-            self.bus.bte.setimmediatevalue(0)
+            set_immediate(self.bus.bte, 0)
 
 
 class WishboneMaster(Wishbone):
@@ -116,7 +120,7 @@ class WishboneMaster(Wishbone):
         sTo = ", no cycle timeout"
         if timeout is not None:
             sTo = ", cycle timeout is %u clockcycles" % timeout
-        self.busy_event         = Event("%s_busy" % name)
+        self.busy_event         = Event()
         self._timeout           = timeout
         self.busy               = False
         self._acked_ops         = 0
@@ -142,11 +146,11 @@ class WishboneMaster(Wishbone):
         if self.busy:
             self.log.error("Opening Cycle, but WB Driver is already busy. Someting's wrong")
             await self.busy_event.wait()
-            print('\n--------\nsarasa')
         self.busy_event.clear()
         self.busy       = True
         cocotb.start_soon(self._read())
         cocotb.start_soon(self._clk_cycle_counter()) 
+        await NullTrigger()
         self.bus.cyc.value = 1
         self._acked_ops = 0  
         self._res_buf   = [] 
@@ -167,9 +171,8 @@ class WishboneMaster(Wishbone):
             last_acked_ops = self._acked_ops    
             #check for timeout when finishing the cycle            
             count += 1
-            if (not (self._timeout is None)):
-                if (count > self._timeout): 
-                    raise TestFailure("Timeout of %u clock cycles reached when waiting for reply from slave" % self._timeout)                
+            if (self._timeout is not None):
+                assert not (count > self._timeout), "Timeout of %u clock cycles reached when waiting for reply from slave" % self._timeout
             await clkedge
 
         self.busy = False
@@ -192,9 +195,8 @@ class WishboneMaster(Wishbone):
             while self.bus.stall.value == 1:
                 await clkedge
                 count += 1
-                if (not (self._timeout is None)):
-                    if (count > self._timeout): 
-                        raise TestFailure("Timeout of %u clock cycles reached when on stall from slave" % self._timeout)                
+                if (self._timeout is not None):
+                    assert not (count > self._timeout), "Timeout of %u clock cycles reached when on stall from slave" % self._timeout
             self.log.debug("Stalled for %u cycles" % count)
         return count
 
@@ -214,8 +216,7 @@ class WishboneMaster(Wishbone):
             while (not self._get_reply()[0]) and (count < self._acktimeout) :
                 await clkedge
                 count += 1
-        if (self._acktimeout != 0) and (count >= self._acktimeout):
-            raise TestFailure("Timeout of %u clock cycles reached when waiting for acknowledge" % count)
+        assert not ((self._acktimeout != 0) and (count >= self._acktimeout)), "Timeout of %u clock cycles reached when waiting for acknowledge" % count
 
         if not hasattr(self.bus, "stall"):
             self.bus.stb.value = 0
@@ -230,13 +231,11 @@ class WishboneMaster(Wishbone):
         if ack:
             code = 1
         if hasattr(self.bus, "err") and self.bus.err.value == 1:
-            if ack:
-                raise TestFailure("Slave raised ACK and ERR line")
+            assert not ack, "Slave raised ACK and ERR line"
             ack = True
             code = 2
         if hasattr(self.bus, "rty") and self.bus.rty.value == 1:
-            if ack:
-                raise TestFailure("Slave raised {} and RTY line".format("ACK" if code == 1 else "ERR"))
+            assert not ack, "Slave raised {} and RTY line".format("ACK" if code == 1 else "ERR")
             ack = True
             code = 3
         return ack, code
@@ -246,7 +245,7 @@ class WishboneMaster(Wishbone):
         Reader for slave replies
         """
         count = 0
-        clkedge = FallingEdge(self.clock)
+        clkedge = RisingEdge(self.clock)
         while self.busy:
             ack, reply = self._get_reply()
             # valid reply?
@@ -255,6 +254,7 @@ class WishboneMaster(Wishbone):
                 #append reply and meta info to result buffer
                 tmpRes =  WBRes(ack=reply, sel=None, adr=None, datrd=datrd, datwr=None, waitIdle=None, waitStall=None, waitAck=self._clk_cycle_count, cti=None, bte=None)
                 self._res_buf.append(tmpRes)
+                self._acked_ops += 1
 
             await clkedge
             count += 1
@@ -276,7 +276,7 @@ class WishboneMaster(Wishbone):
             self.bus.stb.value = 1
             self.bus.adr.value = adr
             if hasattr(self.bus, "sel"):
-                self.bus.sel.value = sel if sel is not None else BinaryValue("1" * len(self.bus.sel))
+                self.bus.sel.value = sel if sel is not None else LogicArray("1" * len(self.bus.sel))
             if hasattr(self.bus, "cti"):
                 self.bus.cti.value = cti
                 if hasattr(self.bus, "bte"):
@@ -317,8 +317,7 @@ class WishboneMaster(Wishbone):
                 await self._open_cycle()
 
                 for op in arg:
-                    if not isinstance(op, WBOp):
-                        raise TestFailure("Sorry, argument must be a list of WBOp (Wishbone Operation) objects!")    
+                    assert isinstance(op, WBOp), "Sorry, argument must be a list of WBOp (Wishbone Operation) objects!"
 
                     self._acktimeout = op.acktimeout
 
@@ -351,5 +350,5 @@ class WishboneMaster(Wishbone):
 
             return result
         else:
-            raise TestFailure("Sorry, argument must be a list of WBOp (Wishbone Operation) objects!")
+            assert False, "Sorry, argument must be a list of WBOp (Wishbone Operation) objects!"
             return None
