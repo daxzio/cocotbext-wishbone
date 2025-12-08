@@ -1,15 +1,18 @@
 
 import cocotb
 from itertools import repeat
-from cocotb_bus.monitors    import BusMonitor
-from cocotb.triggers    import RisingEdge
-from cocotb.result      import TestFailure
-from cocotb.decorators  import public
-try:
-    from Queue import Queue # Python 2.x
-except ImportError:
-    from queue import Queue
+from cocotb_bus.monitors import BusMonitor
+from cocotb.triggers import RisingEdge
+from queue import Queue
 
+# Immediate assign helper working in both 1.x and 2.x cocotb without deprecation warnings
+try:
+    from cocotb.handle import Immediate
+    def set_immediate(sig, val):
+        sig.set(Immediate(val))
+except ImportError:
+    def set_immediate(sig, val):
+        sig.setimmediatevalue(val)
 
 class WBAux():
     """Wishbone Auxiliary Wrapper Class, wrap meta informations on bus transaction (internal only)
@@ -22,7 +25,6 @@ class WBAux():
         self.ts         = tsStb
         self.waitIdle   = waitIdle
 
-@public
 class WBRes():
     """Wishbone Result Wrapper Class. What's happend on the bus plus meta information on timing
     """
@@ -63,14 +65,14 @@ class Wishbone(BusMonitor):
         self._width = kwargs.pop('width', 32)
         BusMonitor.__init__(self, entity, name, clock, **kwargs)
         # Drive some sensible defaults (setimmediatevalue to avoid x asserts)
-        self.bus.ack.setimmediatevalue(0)
-        self.bus.datrd.setimmediatevalue(0)
+        set_immediate(self.bus.ack, 0)
+        set_immediate(self.bus.datrd, 0)
         if hasattr(self.bus, "err"):
-            self.bus.err.setimmediatevalue(0)
+            set_immediate(self.bus.err, 0)
         if hasattr(self.bus, "stall"):
-            self.bus.stall.setimmediatevalue(0)
+            set_immediate(self.bus.stall, 0)
         if hasattr(self.bus, "rty"):
-            self.bus.rty.setimmediatevalue(0)
+            set_immediate(self.bus.rty, 0)
 
 
 class WishboneSlave(Wishbone):
@@ -176,8 +178,7 @@ class WishboneSlave(Wishbone):
                         await clkedge
 
                 #check if the signal we want to assign exists and assign
-                if not hasattr(self.bus, self.replyTypes[rep.ack]):
-                    raise TestFailure("Tried to assign <%s> (%u) to slave reply, but this slave does not have a <%s> line" % (self.replyTypes[rep.ack], rep.ack, self.replyTypes[rep.ack]))
+                assert hasattr(self.bus, self.replyTypes[rep.ack]), "Tried to assign <%s> (%u) to slave reply, but this slave does not have a <%s> line" % (self.replyTypes[rep.ack], rep.ack, self.replyTypes[rep.ack])
                 if self.replyTypes[rep.ack]    == "ack":
                     self.bus.ack.value = 1
                 elif self.replyTypes[rep.ack]  == "err":
@@ -204,8 +205,7 @@ class WishboneSlave(Wishbone):
 
             #Response: ack/err/rty
             reply = next(self._ackGen)
-            if reply not in self.replyTypes:
-                raise TestFailure("Tried to assign unknown reply type (%u) to slave reply. Valid is 1-3 (ack, err, rty)" %  reply)
+            assert reply in self.replyTypes, "Tried to assign unknown reply type (%u) to slave reply. Valid is 1-3 (ack, err, rty)" %  reply
 
             wr = None
             if self.bus.we.value:
@@ -230,7 +230,7 @@ class WishboneSlave(Wishbone):
         #respond and notify the callback function
         while True:
 
-            while self.bus.stb.value.binstr != '1':
+            while str(self.bus.stb.value) != '1':
                 # Permission 3.05: MASTER interfaces MAY assert [CYC_O] indefinitely.
                 # i.e after [STB_O] was negated.
                 try:
@@ -251,12 +251,12 @@ class WishboneSlave(Wishbone):
 
             self._respond()
             # wait for response
-            while self.bus.ack.value.binstr != '1':
+            while str(self.bus.ack.value) != '1':
                 if hasattr(self.bus, "err"):
-                    if self.bus.err.value.binstr == '1':
+                    if str(self.bus.err.value) == '1':
                         break
                 if hasattr(self.bus, "rty"):
-                    if self.bus.rty.value.binstr == '1':
+                    if str(self.bus.rty.value) == '1':
                         break
                 await clkedge
 
