@@ -13,6 +13,11 @@ readme = "README.rst"
 license = "Apache-2.0"
 authors = [
     {name = "Staf Verhaegen", email = "staf@stafverhaegen.be"},
+    {name = "Mathias Kreider", email = "m.kreider@gsi.de"},
+]
+maintainers = [
+    {name = "Stefan Wallentowitz", email = "stefan@wallentowitz.de"},
+    {name = "Fabien Marteau", email = "mail@fabienm.eu"},
 ]
 requires-python = ">=3.9"
 classifiers = [
