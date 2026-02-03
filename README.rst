@@ -100,7 +100,7 @@ For example, to read respectively at address ``2``, ``3``, ``0`` then ``1``, we 
     wbRes = async rdbg.wbs.send_cycle([WBOp(2), WBOp(3), WBOp(0), WBOp(1)])
 
 The ``send_cycle()`` method returns a list of Wishbone Result Wrapper Class ``WBRes()`` with
-some data declared like it in :file:`driver.py`::
+some data declared like it in file `driver.py`::
 
     def __init__(self, ack=0, sel=None, adr=0, datrd=None, datwr=None, waitIdle=0, waitStall=0, waitAck=0):
 
