@@ -1,0 +1,51 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+  "setuptools>=61",
+  "setuptools_scm[toml]>=6.2",
+  "wheel",
+]
+
+[project]
+name = "cocotbext-wishbone"
+description = "Cocotb Wishbone modules"
+readme = "README.rst"
+license = "Apache-2.0"
+authors = [
+    {name = "Staf Verhaegen", email = "staf@stafverhaegen.be"},
+]
+requires-python = ">=3.9"
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+dynamic = [
+  "version",
+]
+dependencies = [
+  "cocotb>=2.0.0",
+]
+[project.urls]
+repository = "https://github.com/wallento/cocotbext-wishbone"
+
+[tool.setuptools_scm]
+write_to = "cocotbext/wishbone/version.py"
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests"
+]
+addopts = "--import-mode importlib"
+
+[dependency-groups]
+dev = [
+    "cocotb-test>=0.2.6",
+    "pytest>=8.3.5",
+    "pytest-xdist>=3.6.1",
+    "tox>=4.25.0",
+]
+lint = [
+    "flake8>=7.3.0",
+]

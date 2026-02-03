@@ -14,7 +14,7 @@ setuptools.setup(
     description="Cocotb Wishbone modules",
     long_description=long_description,
     packages=["cocotbext.wishbone"],
-    install_requires=['cocotb>=1.6.0', 'cocotb_bus'],
+    install_requires=['cocotb>=2.0.0', 'cocotb_bus'],
     setup_requires=[
         'setuptools_scm',
     ],
